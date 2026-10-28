@@ -1,0 +1,8 @@
+node_modules
+dist
+coverage
+legacy-fastapi
+app
+tests
+*.py
+requirements.txt

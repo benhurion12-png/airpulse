@@ -1,0 +1,91 @@
+name: airpulse
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: airpulse
+      POSTGRES_USER: airpulse
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-airpulse-local-only}
+    ports:
+      - "127.0.0.1:5436:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airpulse -d airpulse"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    restart: unless-stopped
+    ports:
+      - "1886:1883"
+    volumes:
+      - ./infra/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mqtt_data:/mosquitto/data
+
+  api:
+    build: ./services/api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://airpulse:${POSTGRES_PASSWORD:-airpulse-local-only}@postgres:5432/airpulse
+      DB_SYNCHRONIZE: ${DB_SYNCHRONIZE:-true}
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      ADMIN_KEY: ${ADMIN_KEY:-airpulse-admin}
+      SIMULATOR_TOKEN: ${SIMULATOR_TOKEN:-airpulse-simulator}
+      JWT_SECRET: ${JWT_SECRET:-airpulse-local-jwt-change-this-secret}
+      JWT_ACCESS_MINUTES: ${JWT_ACCESS_MINUTES:-30}
+      JWT_REFRESH_DAYS: ${JWT_REFRESH_DAYS:-7}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@airpulse.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-ChangeMe123!}
+      ADMIN_NAME: ${ADMIN_NAME:-Администратор AirPulse}
+      APP_ORIGINS: ${APP_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  simulator:
+    profiles: ["demo"]
+    build: ./services/simulator
+    restart: unless-stopped
+    environment:
+      API_URL: http://api:8000
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      SIMULATOR_TOKEN: ${SIMULATOR_TOKEN:-airpulse-simulator}
+      INTERVAL_SECONDS: ${SENSOR_INTERVAL_SECONDS:-15}
+    depends_on:
+      api:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./web
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  mqtt_data:
+

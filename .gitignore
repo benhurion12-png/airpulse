@@ -1,0 +1,16 @@
+.env
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+node_modules/
+.next/
+*.tsbuildinfo
+*.db
+dist/
+coverage/
+.test-results/
+.DS_Store
+*.log
+firmware/esp32-mq2/secrets.h
+
